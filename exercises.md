@@ -1,333 +1,133 @@
-# Day 14 — Exercises
+# Day 14 — Exercises — Completed
 
-## AI Evaluation & Benchmarking · Lab Worksheet
+## Part 1 — Warm-up
 
-**Thời gian làm bài:** 09:15–12:00
+### Exercise 1.1 — RAGAS thresholds
 
-**Domain:** Northstar University Student Services
-
-Điền trực tiếp câu trả lời vào file này. Golden dataset 20 QA được viết một lần
-duy nhất trong `golden_dataset.json`, không chép lại toàn bộ vào Markdown.
-
----
-
-Từ 09:15–09:30, cài môi trường và chạy baseline tests theo `guide_lab.md`.
-
----
-
-## Part 1 — Warm-up (09:30–09:45)
-
-### Exercise 1.1 — RAGAS Metric Thresholds
-
-Theo bài giảng:
-
-- 0.8–1.0: Good — monitor, maintain.
-- 0.6–0.8: Needs work — analyze failures, iterate.
-- Dưới 0.6: Significant issues — investigate.
-
-Với từng metric, xác định khi nào score thấp có thể chấp nhận và khi nào là
-critical.
-
-| Metric | Acceptable Low Score Scenario | Critical Low Score Scenario | Action Required |
+| Metric | Acceptable low score | Critical low score | Action |
 |---|---|---|---|
-| Faithfulness | | | |
-| Answer Relevance | | | |
-| Context Recall | | | |
-| Context Precision | | | |
-| Completeness | | | |
+| Faithfulness | Câu trả lời đúng ý nhưng có diễn đạt thêm cần kiểm tra | Có claim không có trong context | Thêm citation/claim checker |
+| Answer Relevance | Câu hỏi mơ hồ hoặc cần câu trả lời ngắn | Trả lời lệch chủ đề | Sửa prompt và kiểm tra intent |
+| Context Recall | Câu hỏi chỉ cần một phần nhỏ corpus | Thiếu evidence bắt buộc | Cải thiện query/chunking |
+| Context Precision | Có một vài chunk phụ nhưng vẫn có evidence đúng | Top-k chủ yếu không liên quan | Rerank hoặc giảm top-k |
+| Completeness | Câu hỏi đơn giản, chỉ có một ý | Bỏ sót điều kiện, deadline hoặc ngoại lệ | Dùng checklist claim |
 
 ### Exercise 1.2 — Bias trong LLM-as-a-Judge
 
-Ba bias thường gặp:
-
-- Position bias: judge ưu tiên answer xuất hiện trước.
-- Verbosity bias: judge ưu tiên answer dài hơn.
-- Self-preference: judge ưu tiên output giống chính model đó.
-
-**Câu 1: Thiết kế experiment phát hiện position bias với ít nhất hai conditions.**
-
-> *Câu trả lời:*
-
-**Câu 2: Làm thế nào giảm verbosity bias bằng rubric design?**
-
-> *Câu trả lời:*
-
-**Câu 3: Tại sao cần calibrate LLM judge với human labels?**
-
-> *Câu trả lời:*
+1. Chấm cùng một cặp answer A/B ở hai điều kiện: A đứng trước B và B đứng trước A. Giữ nguyên question/rubric; position bias xuất hiện nếu lựa chọn hoặc điểm thay đổi đáng kể. Có thể thêm nhiều hoán vị và tính tỉ lệ đảo kết quả.
+2. Rubric chấm theo claim bắt buộc, correctness và evidence; không chấm theo độ dài. Yêu cầu câu trả lời ngắn gọn, penalize lặp lại và dùng answer ẩn danh khi có thể.
+3. Human labels giúp đo agreement, phát hiện judge thiên lệch và hiệu chỉnh threshold trước khi dùng trong CI/CD.
 
 ### Exercise 1.3 — Evaluation trong CI/CD
 
-**Câu 1: Chọn threshold để block deployment.**
-
-| Metric | Threshold | Lý do |
+| Metric | Threshold block | Lý do |
 |---|---:|---|
-| Faithfulness | | |
-| Answer Relevance | | |
-| Completeness | | |
+| Faithfulness | 0.80 | Không triển khai nếu có nhiều claim không được hỗ trợ |
+| Answer Relevance | 0.75 | Bảo đảm trả lời đúng intent |
+| Completeness | 0.75 | Không bỏ sót điều kiện quan trọng |
 
-**Câu 2: Khi nào dùng offline evaluation, online evaluation và human review?**
+Offline evaluation dùng cho mỗi thay đổi và regression; online evaluation dùng canary/A-B sau deploy; human review bắt buộc cho case rủi ro cao, điểm sát ngưỡng hoặc disagreement.
 
-> *Câu trả lời:*
+## Part 2 — Core Coding
 
----
+Đã hoàn thiện các TODO bắt buộc trong `solution/solution.py`; `pytest tests/ -q` đạt **42 passed**. Retrieval metrics được lưu trong report nhưng không làm thay đổi `overall_score()` và pass rule gốc. Bonus reranking chưa chọn làm.
 
-## Part 2 — Core Coding (09:45–10:40)
+## Part 3 — Golden Dataset & Real Benchmark
 
-Hoàn thiện các TODO bắt buộc trong `template.py`.
-
-### Task 1 — Data Models
-
-- `QAPair`: question, expected answer, gold context, metadata và retrieved contexts.
-- `EvalResult`: answer-side scores, optional retrieval scores, pass/failure fields.
-- `overall_score()`: trung bình Faithfulness, Relevance và Completeness.
-
-### Task 2 — RAGASEvaluator
-
-Answer-side:
-
-- `evaluate_faithfulness(answer, context)`
-- `evaluate_relevance(answer, question)`
-- `evaluate_completeness(answer, expected)`
-
-Retrieval-side:
-
-- `evaluate_context_recall(contexts, expected)`
-- `evaluate_context_precision(contexts, expected)`
-
-Full pipeline:
-
-- `run_full_eval(..., contexts=None)` luôn tính ba answer metrics.
-- Nếu có `contexts`, tính và lưu thêm Context Recall và Context Precision.
-- Retrieval scores không làm thay đổi `overall_score()` và pass rule gốc.
-
-### Task 3 — LLMJudge
-
-- `score_response(question, answer, rubric)`
-- `detect_bias(scores_batch)`
-
-### Task 4 — BenchmarkRunner
-
-- `run(qa_pairs, agent_fn, evaluator)`
-- `generate_report(results)`
-- `run_regression(new_results, baseline_results)`
-- `identify_failures(results, threshold)`
-
-`BenchmarkRunner.run()` phải truyền `pair.retrieved_contexts` vào
-`run_full_eval()`. Report phải có average của hai retrieval metrics.
-
-### Task 5 — FailureAnalyzer
-
-- `categorize_failures(failures)`
-- `find_root_cause(failure)`
-- `generate_improvement_suggestions(failures)`
-- `generate_improvement_log(failures, suggestions)`
-
-Kiểm tra:
-
-```bash
-pytest tests/ -v
-```
-
-`rerank_by_overlap()` là TODO bonus của Exercise 3.5. Test tương ứng được skip
-nếu bạn chưa làm bonus.
-
----
-
-## Part 3 — Golden Dataset & Real Benchmark (10:40–11:35)
-
-### Exercise 3.1 — Build the Golden Dataset
-
-Thiết kế và validate dataset theo Mục 5–6 trong `guide_lab.md`. Nội dung 20 QA
-được điền trực tiếp trong `golden_dataset.json`; phần dưới chỉ ghi lại kết quả
-và quyết định thiết kế, không chép lại toàn bộ QA.
-
-**Kết quả dataset**
+### Exercise 3.1 — Dataset
 
 | Hạng mục | Kết quả |
-|---|---|
-| Tổng số records | ____ / 20 |
-| Easy | ____ / 5 |
-| Medium | ____ / 7 |
-| Hard | ____ / 5 |
-| Adversarial | ____ / 3 |
-| Source documents được sử dụng | ____ / 10 |
-| Validator status | PASS / FAIL |
+|---|---:|
+| Tổng số records | 20 / 20 |
+| Easy | 5 / 5 |
+| Medium | 7 / 7 |
+| Hard | 5 / 5 |
+| Adversarial | 3 / 3 |
+| Source documents | 10 / 10 |
+| Validator status | PASS |
 
-**Ba case đại diện cho quyết định thiết kế**
+Ba case đại diện: **E01** (easy, `01_academic_calendar.md`) hỏi một ngày cụ thể; **M01** (medium, `02_course_registration.md` và `03_tuition_payment_refund.md`) yêu cầu ghép approval/fee; **A03** (adversarial, `09_privacy_security_and_policy_updates.md`) kiểm tra suy luận sai về quyền truy cập hồ sơ. Khó nhất là tách claim chính và claim điều kiện thành evidence verbatim, đặc biệt với câu hỏi nhiều bước và policy version.
 
-| ID | Difficulty | Source document(s) | Vì sao case phù hợp với difficulty/attack type? |
-|---|---|---|---|
-| | | | |
-| | | | |
-| | | | |
-
-**Điểm khó nhất khi xây dựng expected answer hoặc evidence là gì?**
-
-> *Câu trả lời:*
-
-**Xác nhận:**
-
-- [ ] Mọi claim trong expected answer đều có evidence hỗ trợ.
-- [ ] Không có questions trùng ý và không dùng kiến thức ngoài corpus.
-- [ ] `python validate_golden_dataset.py` báo `PASS`.
+Đã kiểm tra mọi expected-answer claim có evidence, không trùng question, đủ 10 source documents và validator báo PASS.
 
 ### Exercise 3.2 — Benchmark Run
 
-Chạy:
-
-```bash
-python domain_assistant.py
-python evaluate_answers.py
-```
-
-Copy bảng terminal vào đây hoặc điền từ `artifacts/benchmark_results.json`.
-
-| ID | Question (short) | Ctx Recall | Ctx Precision | Faithfulness | Relevance | Completeness | Overall | Passed? | Failure Type |
+| ID | Question (short) | Recall | Precision | Faith. | Rel. | Complete. | Overall | Passed | Failure |
 |---|---|---:|---:|---:|---:|---:|---:|---|---|
-| E01 | | | | | | | | | |
-| E02 | | | | | | | | | |
-| E03 | | | | | | | | | |
-| E04 | | | | | | | | | |
-| E05 | | | | | | | | | |
-| M01 | | | | | | | | | |
-| M02 | | | | | | | | | |
-| M03 | | | | | | | | | |
-| M04 | | | | | | | | | |
-| M05 | | | | | | | | | |
-| M06 | | | | | | | | | |
-| M07 | | | | | | | | | |
-| H01 | | | | | | | | | |
-| H02 | | | | | | | | | |
-| H03 | | | | | | | | | |
-| H04 | | | | | | | | | |
-| H05 | | | | | | | | | |
-| A01 | | | | | | | | | |
-| A02 | | | | | | | | | |
-| A03 | | | | | | | | | |
+| E01 | Fall registration close | 1.000 | 1.000 | 1.000 | .571 | 1.000 | .857 | Yes | — |
+| E02 | Normal credit load | 1.000 | 1.000 | .889 | .857 | 1.000 | .915 | Yes | — |
+| E03 | Tuition per credit | 1.000 | .950 | 1.000 | .778 | 1.000 | .926 | Yes | — |
+| E04 | Merit scholarship | 1.000 | 1.000 | 1.000 | .556 | .500 | .685 | Yes | — |
+| E05 | Attendance level | 1.000 | .750 | 1.000 | .400 | 1.000 | .800 | No | off_topic |
+| M01 | Late-add approvals/fee | 1.000 | 1.000 | .647 | .889 | .682 | .739 | Yes | — |
+| M02 | Unpaid balance | 1.000 | 1.000 | .931 | .714 | .867 | .837 | Yes | — |
+| M03 | Scholarship renewal | .593 | 1.000 | .182 | .800 | .296 | .426 | No | hallucination |
+| M04 | Incomplete grade | 1.000 | 1.000 | .638 | .600 | .958 | .732 | Yes | — |
+| M05 | Withdrawal vs attendance | 1.000 | 1.000 | .350 | .571 | .636 | .519 | No | off_topic |
+| M06 | Internship requirements | 1.000 | 1.000 | .677 | .600 | 1.000 | .759 | Yes | — |
+| M07 | Grade appeal | .923 | 1.000 | .842 | .833 | .577 | .751 | Yes | — |
+| H01 | Leave and scholarship | .964 | 1.000 | 1.000 | .545 | .929 | .825 | Yes | — |
+| H02 | Medical credit/refund | 1.000 | .950 | .643 | .714 | .692 | .683 | Yes | — |
+| H03 | Degree clearance | .950 | 1.000 | .310 | .857 | .450 | .539 | No | off_topic |
+| H04 | Complaint exception | .821 | .917 | .714 | .857 | .286 | .619 | No | incomplete |
+| H05 | August 1 policy | .966 | 1.000 | .786 | .818 | .724 | .776 | Yes | — |
+| A01 | Medical diagnosis | .929 | 1.000 | .111 | .667 | .500 | .426 | No | hallucination |
+| A02 | Prompt/password request | .929 | .806 | .333 | .000 | .000 | .111 | No | irrelevant |
+| A03 | Parent record access | .857 | .887 | .923 | .583 | .905 | .804 | Yes | — |
 
-**Aggregate Report**
-
-- Overall pass rate: ____%
-- Avg Context Recall: ____
-- Avg Context Precision: ____
-- Avg Faithfulness: ____
-- Avg Relevance: ____
-- Avg Completeness: ____
-- Failure type distribution: ____
-
-**Ba cases có Overall Score thấp nhất**
-
-1. ID: ____ | Score: ____ | Failure type: ____
-2. ID: ____ | Score: ____ | Failure type: ____
-3. ID: ____ | Score: ____ | Failure type: ____
-
-**Nhận xét ngắn:** Metric nào yếu nhất? Kết quả gợi ý vấn đề nằm ở retrieval
-hay generation?
-
-> *Câu trả lời:*
+**Aggregate:** pass rate **65%**; average Context Recall **0.947**; Context Precision **0.963**; Faithfulness **0.699**; Relevance **0.661**; Completeness **0.700**. Failures: off_topic 3, hallucination 2, incomplete 1, irrelevant 1. Retrieval khá tốt nhưng generation là điểm yếu chính vì recall/precision cao trong khi faithfulness, relevance và completeness thấp hơn. Ba score thấp nhất: A02 (.111, irrelevant), A01 (.426, hallucination), M03 (.426, hallucination).
 
 ### Exercise 3.3 — LLM-as-a-Judge Rubric Design
 
-Thiết kế rubric domain-specific cho Student Services. Mỗi mức phải đủ cụ thể để
-hai người chấm độc lập có thể hiểu giống nhau.
-
-Chọn 3–5 dimensions:
-
-- [ ] Correctness
-- [ ] Completeness
-- [ ] Relevance
-- [ ] Evidence/citation
-- [ ] Actionability
-- [ ] Safety/privacy
-- [ ] Tone/clarity
-- [ ] Dimension khác: __________
+Đã chọn các dimensions: **Correctness, Completeness, Relevance, Evidence/citation, Safety/privacy**.
 
 | Score | Tiêu chí domain-specific | Ví dụ response |
 |---:|---|---|
-| 5 | | |
-| 4 | | |
-| 3 | | |
-| 2 | | |
-| 1 | | |
+| 5 | Đúng toàn bộ claim; đủ điều kiện, deadline và ngoại lệ; bám evidence; trực tiếp và an toàn | Trả lời đủ quy trình, phí, thời hạn và nguồn policy |
+| 4 | Đúng gần như toàn bộ; chỉ thiếu chi tiết nhỏ không làm đổi quyết định | Đúng deadline nhưng thiếu một ghi chú phụ |
+| 3 | Đúng ý chính nhưng thiếu một điều kiện hoặc evidence chưa rõ | Nêu đúng quy trình nhưng quên approval |
+| 2 | Chỉ đúng một phần, bỏ sót điều kiện quan trọng hoặc lệch intent | Nêu fee nhưng không nêu deadline/approval |
+| 1 | Sai, bịa claim, không được evidence hỗ trợ hoặc vi phạm safety/privacy | Xác nhận parent tự động được xem hồ sơ |
 
 **Ba edge cases khó chấm**
 
-| Edge Case | Tại sao khó chấm? | Rubric xử lý thế nào? |
+| Edge case | Tại sao khó chấm? | Rubric xử lý thế nào? |
 |---|---|---|
-| | | |
-| | | |
-| | | |
+| Câu hỏi có nhiều policy version | Cùng một hành động có thể có fee/deadline khác nhau theo ngày | Chấm đúng version và effective date là bắt buộc |
+| Câu hỏi adversarial/out-of-scope | Câu trả lời tốt là refusal có hướng dẫn an toàn, không phải trả lời trực tiếp | Safety/privacy = 1 nếu tiết lộ hoặc chẩn đoán; refusal phù hợp đạt điểm cao |
+| Trả lời đúng nhưng quá dài | Verbosity dễ tạo bias và claim thừa | Không cộng điểm vì dài; chỉ chấm claim đúng, đủ và liên quan |
 
-**Bias controls:** Rubric hoặc evaluation protocol của bạn giảm position bias,
-verbosity bias và self-preference bằng cách nào?
-
-> *Câu trả lời:*
+**Bias controls:** đảo vị trí A/B trong position-bias test; ẩn tên model; chấm theo claim checklist và evidence thay vì văn phong; giới hạn độ dài; dùng cùng rubric cho mọi answer; calibrate judge bằng human labels và theo dõi inter-rater agreement.
 
 ### Exercise 3.4 — Framework Comparison (Bonus +10)
 
-Chỉ làm sau khi hoàn thành 3.1–3.3. Chọn hai framework trong RAGAS, DeepEval
-và TruLens; chạy hoặc thiết kế một so sánh có cùng input dataset.
+Chưa thực hiện bonus này; không đưa ra kết luận giả về RAGAS, DeepEval hoặc TruLens khi chưa chạy cùng dataset.
 
-| Tiêu chí | Framework 1: ____ | Framework 2: ____ |
+| Tiêu chí | Framework 1 | Framework 2 |
 |---|---|---|
-| Setup complexity | | |
-| Metrics available | | |
-| CI/CD integration | | |
-| Kết quả trên cùng dataset | | |
-| Insight rút ra | | |
-
-- Scores có nhất quán không?
-- Framework nào strict hơn và vì sao?
-- Hai framework có tìm ra cùng failure cases không?
-
-> *Phân tích:*
+| Setup complexity | Chưa đo | Chưa đo |
+| Metrics available | Chưa đo | Chưa đo |
+| CI/CD integration | Chưa đo | Chưa đo |
+| Kết quả trên cùng dataset | Chưa đo | Chưa đo |
+| Insight rút ra | Chưa có | Chưa có |
 
 ### Exercise 3.5 — Retrieval Reranking (Bonus +5)
 
-Mục tiêu: kiểm tra việc đổi thứ tự chunks có tăng Context Precision mà không
-thay đổi Context Recall hay không.
-
-1. Chọn ít nhất 5 cases từ `artifacts/actual_answers.json`.
-2. Tính Context Recall và Context Precision trước rerank.
-3. Implement `rerank_by_overlap()` hoặc một reranker khác.
-4. Rerank cùng tập chunks, không thêm hoặc xóa chunk.
-5. Tính lại hai metrics và giải thích kết quả.
+Chưa thực hiện bonus này; chưa thay đổi thứ tự chunks và chưa chạy `rerank_by_overlap()`.
 
 | ID | Recall before | Recall after | Precision before | Precision after | Delta Precision |
 |---|---:|---:|---:|---:|---:|
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| **Avg** | | | | | |
+| — | — | — | — | — | — |
+| **Avg** | — | — | — | — | — |
 
-**Tại sao Recall dự kiến không đổi?**
+Recall dự kiến không đổi khi rerank chỉ đổi thứ tự, vì tập chunks không thay đổi. Reranking không đủ nếu evidence không được retrieve; khi đó cần sửa query, retriever hoặc chunking.
 
-> *Câu trả lời:*
+## Part 4 — Completion Checklist
 
-**Khi nào reranking không đủ và cần sửa retriever/query/chunking?**
-
-> *Câu trả lời:*
-
----
-
-## Part 4 — Reflection (11:35–11:50)
-
-Hoàn thành `reflection.md` bằng kết quả thật từ Exercise 3.2.
-
----
-
-## Completion Checklist
-
-Hoàn thành kiểm tra cuối trong khoảng 11:50–12:00.
-
-- [ ] Tất cả required tests pass.
-- [ ] `golden_dataset.json` validate thành công.
-- [ ] Exercise 3.1 hoàn thành trong file JSON và bảng kết quả phía trên.
-- [ ] Exercise 3.2 có năm metrics, aggregate report và ba cases thấp nhất.
-- [ ] Exercise 3.3 có rubric 1–5 và bias controls.
-- [ ] `reflection.md` có ba failure analyses và regression strategy.
-- [ ] Đã copy `template.py` thành `solution/solution.py`.
-- [ ] Exercise 3.4 và 3.5 chỉ làm nếu chọn bonus.
+- [x] 42 required tests pass.
+- [x] Golden dataset validate PASS.
+- [x] Exercise 3.1 và 3.2 có kết quả thật.
+- [x] Exercise 3.3 có rubric 1–5 và bias controls.
+- [x] `reflection.md` có failure analyses và regression strategy.
+- [x] `solution/solution.py` đã tồn tại.
+- [ ] Bonus 3.4 và 3.5 — không chọn làm.
